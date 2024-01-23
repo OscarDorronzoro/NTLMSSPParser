@@ -52,6 +52,40 @@ for i in range(len(flagLines)):
     flagLines[i] = flagLines[i].split('\t')
     #print(f[0])
 
+WINDOWS_VERSIONS = [ # Major, Minor, Build, Description
+    [3, 1, 528, 'Windows NT 3.1'],
+    [3, 5, 807, 'Windows NT 3.5'],
+    [3, 51, 1057, 'Windows NT 3.51'],
+    [4, 0, 1381, 'Windows NT 4.0'],
+    [5, 0, 2195, 'Windows 2000'],
+    [5, 1, 2600, 'Windows XP'],
+    [5, 2, 3790, 'Windows Server 2003'],
+    [6, 0, 6000, 'Windows Vista'],
+    [6, 0, 6001, 'Windows Server 2008'],
+    [6, 1, 7600, 'Windows 7'],
+    [6, 1, 8400, 'Windows Home Server 2011'],
+    [6, 2, 9200, 'Windows Server 2012'],
+    [6, 3, 9600, 'Windows Server 2012 R2']
+]
+
+def getWindowsVersion(major, minor, build):
+    description = 'NOT FOUND'
+    for v in WINDOWS_VERSIONS:
+        if v[0] == major and v[1] == minor and v[2] == build:
+            description = v[3]
+            break
+    return description
+
+TARGET_INFORMATION_TYPES = [
+    'Terminator',
+    'Server Name',
+    'Domain Name',
+    'Fully-qualified DNS Host Name',
+    'DNS Host Name',
+    'Parent DNS Domain' # for servers in subdomains
+]
+
+
 
 b64M1NTLM = 'TlRMTVNTUAABAAAAB4IIAAAAAAAAAAAAAAAAAAAAAAA='
 
@@ -103,7 +137,89 @@ print('\n\n')
 
 
 
-b64M3NTLM = 'TlRMTVNTUAADAAAAGAAYAGgAAAC+AL4AgAAAAAAAAABAAAAAEgASAEAAAAAWABYAUgAAAAAAAAAAAAAABYIIAGEAbgBvAG4AeQBtAG8AdQBzAFcATwBSAEsAUwBUAEEAVABJAE8ATgCszO3gEs+FCQPG+EPwbBACp2iYkCMetY1rHCFDtOy+TXBPJZrQdeGLAQEAAAAAAAAApvubhC/aAcK5uGDnbYsoAAAAAAIADABNAEUATgBBAFIAQQABABIAVwBJAE4ARgBFAEkASQBTADIABAAYAG0AZQBuAGEAcgBhAC4AbABvAGMAYQBsAAMALAB3AGkAbgBmAGUAaQBpAHMAMgAuAG0AZQBuAGEAcgBhAC4AbABvAGMAYQBsAAUAGABtAGUAbgBhAHIAYQAuAGwAbwBjAGEAbAAAAAAA'
+
+
+
+b64M2NTLM = 'TlRMTVNTUAACAAAADAAMADgAAAAFgokCbeRb6dMqwYIAAAAAAAAAAJIAkgBEAAAABQLODgAAAA9NAEUATgBBAFIAQQACAAwATQBFAE4AQQBSAEEAAQASAFcASQBOAEYARQBJAEkAUwAxAAQAGABtAGUAbgBhAHIAYQAuAGwAbwBjAGEAbAADACwAdwBpAG4AZgBlAGkAaQBzADEALgBtAGUAbgBhAHIAYQAuAGwAbwBjAGEAbAAFABgAbQBlAG4AYQByAGEALgBsAG8AYwBhAGwAAAAAAA=='
+
+bytesM2NTLM = base64.b64decode(b64M2NTLM)
+M2Signature = bytesM2NTLM[:8].decode()
+M2MessageType = int.from_bytes(bytesM2NTLM[8:12], byteorder='little')
+
+M2TargetNameSBLength, M2TargetNameSBAllocated, M2TargetNameSBOffset = readSecurityBuffer(bytesM2NTLM[12:20])
+
+M2Flagsbits = readFlags(bytesM2NTLM[20:24])
+M2Challenge = bytesM2NTLM[24:32]
+M2Context = bytesM2NTLM[32:40]
+
+M2TargetInformationSBLength, M2TargetInformationSBAllocated, M2TargetInformationSBOffset = readSecurityBuffer(bytesM2NTLM[40:48])
+
+M2OSVersionStructure = bytesM2NTLM[48:56]
+M2OSMajorVersion = int.from_bytes(M2OSVersionStructure[:1], byteorder='little')
+M2OSMinorVersion = int.from_bytes(M2OSVersionStructure[1:2], byteorder='little')
+M2OSBuildNumber = int.from_bytes(M2OSVersionStructure[2:4], byteorder='little')
+M2OSReserved = M2OSVersionStructure[4:8]
+OSVersionDescription = getWindowsVersion(M2OSMajorVersion, M2OSMinorVersion, M2OSBuildNumber)
+
+M2TargetName = bytesM2NTLM[M2TargetNameSBOffset:M2TargetNameSBOffset+M2TargetNameSBLength]
+
+
+def readTargetInformation(targetInfo):
+    baseIndex = 0
+    targetInfoType = int.from_bytes(targetInfo[baseIndex:2], byteorder='little')
+    
+    targets = []
+    while targetInfoType != 0 and targetInfo:
+        targetInfoLength = int.from_bytes(targetInfo[baseIndex+2:baseIndex+4], byteorder='little')
+        targetInfoContent = targetInfo[baseIndex+4:baseIndex+4+targetInfoLength]
+    
+        targets.append({
+            'type': targetInfoType,
+            'length': targetInfoLength,
+            'content': targetInfoContent
+        })
+        
+        baseIndex += 4 + targetInfoLength
+        targetInfoType = int.from_bytes(targetInfo[baseIndex:baseIndex+2], byteorder='little')
+
+    return targets
+
+M2TargetInformation = bytesM2NTLM[M2TargetInformationSBOffset:M2TargetInformationSBOffset+M2TargetInformationSBLength]
+targets = readTargetInformation(M2TargetInformation)
+
+print(M2Signature)
+print('Message Type:',M2MessageType)
+
+print('Target Name Security Buffer (Length/Allocated Space/Offset):', M2TargetNameSBLength, M2TargetNameSBAllocated, M2TargetNameSBOffset)
+
+printFlags(M2Flagsbits)
+print('Challenge:', M2Challenge)
+print('Context:', M2Context)
+
+print()
+print('Target Information Security Buffer (Length/Allocated Space/Offset):', M2TargetInformationSBLength, M2TargetInformationSBAllocated, M2TargetInformationSBOffset)
+print('OS Version Structure:', f'{M2OSMajorVersion}.{M2OSMinorVersion} (Build {M2OSBuildNumber}) - {OSVersionDescription} - {M2OSReserved.hex()}')
+print('Target Name:', M2TargetName.decode('utf-16'))
+
+
+print('\nTargets Information')
+for t in targets:
+    print('Target Information Type:', t['type'], TARGET_INFORMATION_TYPES[t['type']])
+    print('Target Information Length:', t['length'])
+    print('Target Information Content:', t['content'].decode('utf-16'))
+    print()
+
+
+print('\n')
+print('Raw:', bytesM2NTLM)
+print('Length:', len(bytesM2NTLM))
+print('\n\n')
+
+
+
+
+
+b64M3NTLM = 'TlRMTVNTUAADAAAAGAAYAFgAAAC+AL4AcAAAAAAAAABAAAAAAgACAEAAAAAWABYAQgAAAAAAAAAAAAAABYIIAGEAVwBPAFIASwBTAFQAQQBUAEkATwBOAJSwJEhi5nh0Nhl4j/eBeIjIXqpiwibDMWXfzJFrkd047P8Soh4rHdoBAQAAAAAAAAB6WNj3P9oBFV6fbMhbIZAAAAAAAgAMAE0ARQBOAEEAUgBBAAEAEgBXAEkATgBGAEUASQBJAFMAMQAEABgAbQBlAG4AYQByAGEALgBsAG8AYwBhAGwAAwAsAHcAaQBuAGYAZQBpAGkAcwAxAC4AbQBlAG4AYQByAGEALgBsAG8AYwBhAGwABQAYAG0AZQBuAGEAcgBhAC4AbABvAGMAYQBsAAAAAAA='
 
 bytesM3NTLM = base64.b64decode(b64M3NTLM)
 M3Signature = bytesM3NTLM[:8].decode()
