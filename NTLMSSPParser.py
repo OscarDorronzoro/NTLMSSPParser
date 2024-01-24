@@ -1,15 +1,9 @@
 import base64
 import datetime
+from sys import argv
 
-def printFlags(flags):
-    for i in range(len(flags)):
-        if i % 8 == 0:
-            print()
-        elif i % 4 == 0:
-            print(end=' ')
-        print(flags[i], end=' ')
-    print()
-    print()
+# NTLM Spec: https://davenport.sourceforge.net/ntlm.html
+
 
 FLAGS = '''0x00000001	Negotiate Unicode 	Indicates that Unicode strings are supported for use in security buffer data.
 0x00000002	Negotiate OEM 	Indicates that OEM strings are supported for use in security buffer data.
@@ -85,13 +79,15 @@ TARGET_INFORMATION_TYPES = [
     'Parent DNS Domain' # for servers in subdomains
 ]
 
-
-
-b64M1NTLM = 'TlRMTVNTUAABAAAAB4IIAAAAAAAAAAAAAAAAAAAAAAA='
-
-bytesM1NTLM = base64.b64decode(b64M1NTLM)
-M1Signature = bytesM1NTLM[:8].decode()
-M1MessageType = int.from_bytes(bytesM1NTLM[8:12], byteorder='little')
+def printFlags(flags):
+    for i in range(len(flags)):
+        if i % 8 == 0:
+            print()
+        elif i % 4 == 0:
+            print(end=' ')
+        print(flags[i], end=' ')
+    print()
+    print()
 
 def readFlags(flags):
     flagInt = int.from_bytes(flags, byteorder='little')
@@ -100,69 +96,18 @@ def readFlags(flags):
         returnFlags.append(flagInt >> i & 1)
     return returnFlags
 
-M1Flags = bytesM1NTLM[12:16][::-1]
-M1Flagsbits = readFlags(bytesM1NTLM[12:16])
-
 def readSecurityBuffer(sb):
     sbLength = int.from_bytes(sb[:2], byteorder='little')
     sbAllocated = int.from_bytes(sb[2:4], byteorder='little')
     sbOffset = int.from_bytes(sb[4:8], byteorder='little')
-    return sbLength, sbAllocated, sbOffset
+    return {'length': sbLength, 'allocated': sbAllocated, 'offset': sbOffset}
 
-M1DomainSBLength, M1DomainSBAllocated, M1DomainSBOffset = readSecurityBuffer(bytesM1NTLM[16:24])
-M1WorkstationSBLength, M1WorkstationSBAllocated, M1WorkstationSBOffset = readSecurityBuffer(bytesM1NTLM[24:32])
-
-
-print(M1Signature)
-print('Message Type:',M1MessageType)
-
-#print(M1Flags)
-#printFlags(M1Flagsbits)
 def printFlags(flags):
     print('\nFlags')
     for i in range(len(flags)):
         if flags[i] == 1:
             print(flagLines[i][0], '-', flagLines[i][1])
     print()
-
-printFlags(M1Flagsbits)
-
-print('Domain Security Buffer (Length/Allocated Space/Offset):', M1DomainSBLength, M1DomainSBAllocated, M1DomainSBOffset)
-print('Workstation Security Buffer (Length/Allocated Space/Offset):', M1WorkstationSBLength, M1WorkstationSBAllocated, M1WorkstationSBOffset)
-
-print()
-print('Raw:', bytesM1NTLM)
-print('Length:', len(bytesM1NTLM))
-print('\n\n')
-
-
-
-
-
-
-b64M2NTLM = 'TlRMTVNTUAACAAAADAAMADgAAAAFgokCbeRb6dMqwYIAAAAAAAAAAJIAkgBEAAAABQLODgAAAA9NAEUATgBBAFIAQQACAAwATQBFAE4AQQBSAEEAAQASAFcASQBOAEYARQBJAEkAUwAxAAQAGABtAGUAbgBhAHIAYQAuAGwAbwBjAGEAbAADACwAdwBpAG4AZgBlAGkAaQBzADEALgBtAGUAbgBhAHIAYQAuAGwAbwBjAGEAbAAFABgAbQBlAG4AYQByAGEALgBsAG8AYwBhAGwAAAAAAA=='
-
-bytesM2NTLM = base64.b64decode(b64M2NTLM)
-M2Signature = bytesM2NTLM[:8].decode()
-M2MessageType = int.from_bytes(bytesM2NTLM[8:12], byteorder='little')
-
-M2TargetNameSBLength, M2TargetNameSBAllocated, M2TargetNameSBOffset = readSecurityBuffer(bytesM2NTLM[12:20])
-
-M2Flagsbits = readFlags(bytesM2NTLM[20:24])
-M2Challenge = bytesM2NTLM[24:32]
-M2Context = bytesM2NTLM[32:40]
-
-M2TargetInformationSBLength, M2TargetInformationSBAllocated, M2TargetInformationSBOffset = readSecurityBuffer(bytesM2NTLM[40:48])
-
-M2OSVersionStructure = bytesM2NTLM[48:56]
-M2OSMajorVersion = int.from_bytes(M2OSVersionStructure[:1], byteorder='little')
-M2OSMinorVersion = int.from_bytes(M2OSVersionStructure[1:2], byteorder='little')
-M2OSBuildNumber = int.from_bytes(M2OSVersionStructure[2:4], byteorder='little')
-M2OSReserved = M2OSVersionStructure[4:8]
-OSVersionDescription = getWindowsVersion(M2OSMajorVersion, M2OSMinorVersion, M2OSBuildNumber)
-
-M2TargetName = bytesM2NTLM[M2TargetNameSBOffset:M2TargetNameSBOffset+M2TargetNameSBLength]
-
 
 def readTargetInformation(targetInfo):
     baseIndex = 0
@@ -184,111 +129,192 @@ def readTargetInformation(targetInfo):
 
     return targets
 
-M2TargetInformation = bytesM2NTLM[M2TargetInformationSBOffset:M2TargetInformationSBOffset+M2TargetInformationSBLength]
-targets = readTargetInformation(M2TargetInformation)
-
-print(M2Signature)
-print('Message Type:',M2MessageType)
-
-print('Target Name Security Buffer (Length/Allocated Space/Offset):', M2TargetNameSBLength, M2TargetNameSBAllocated, M2TargetNameSBOffset)
-
-printFlags(M2Flagsbits)
-print('Challenge:', M2Challenge)
-print('Context:', M2Context)
-
-print()
-print('Target Information Security Buffer (Length/Allocated Space/Offset):', M2TargetInformationSBLength, M2TargetInformationSBAllocated, M2TargetInformationSBOffset)
-print('OS Version Structure:', f'{M2OSMajorVersion}.{M2OSMinorVersion} (Build {M2OSBuildNumber}) - {OSVersionDescription} - {M2OSReserved.hex()}')
-print('Target Name:', M2TargetName.decode('utf-16'))
+def type1Parser(bytesM1NTLM):
+    M1Flagsbits = readFlags(bytesM1NTLM[12:16])
+    printFlags(M1Flagsbits)
 
 
-print('\nTargets Information')
-for t in targets:
-    print('Target Information Type:', t['type'], TARGET_INFORMATION_TYPES[t['type']])
-    print('Target Information Length:', t['length'])
-    print('Target Information Content:', t['content'].decode('utf-16'))
-    print()
+    M1DomainSB = readSecurityBuffer(bytesM1NTLM[16:24]) # Domain Security Buffer
+    M1WorkstationSB = readSecurityBuffer(bytesM1NTLM[24:32]) # Workstation Security Buffer
+
+    print('Domain Security Buffer (Length/Allocated Space/Offset):', M1DomainSB['length'], M1DomainSB['allocated'], M1DomainSB['offset'])
+    print('Workstation Security Buffer (Length/Allocated Space/Offset):', M1WorkstationSB['length'], M1WorkstationSB['allocated'], M1WorkstationSB['offset'])
 
 
-print('\n')
-print('Raw:', bytesM2NTLM)
-print('Length:', len(bytesM2NTLM))
-print('\n\n')
+    print('\nRaw:', bytesM1NTLM)
+    print('Length:', len(bytesM1NTLM))
 
 
+def type2Parser(bytesM2NTLM):
+    M2TargetNameSB = readSecurityBuffer(bytesM2NTLM[12:20])
+    print('\nTarget Name Security Buffer (Length/Allocated Space/Offset):', M2TargetNameSB['length'], M2TargetNameSB['allocated'], M2TargetNameSB['offset'])
+
+    M2Flagsbits = readFlags(bytesM2NTLM[20:24])
+    printFlags(M2Flagsbits)
+
+    M2Challenge = bytesM2NTLM[24:32]
+    print('Challenge:', M2Challenge)
+
+    M2Context = bytesM2NTLM[32:40]
+    print('Context:', M2Context)
+
+    M2TargetInformationSB = readSecurityBuffer(bytesM2NTLM[40:48])
+    print('Target Information Security Buffer (Length/Allocated Space/Offset):', M2TargetInformationSB['length'], M2TargetInformationSB['allocated'], M2TargetInformationSB['offset'])
 
 
-
-b64M3NTLM = 'TlRMTVNTUAADAAAAGAAYAFgAAAC+AL4AcAAAAAAAAABAAAAAAgACAEAAAAAWABYAQgAAAAAAAAAAAAAABYIIAGEAVwBPAFIASwBTAFQAQQBUAEkATwBOAJSwJEhi5nh0Nhl4j/eBeIjIXqpiwibDMWXfzJFrkd047P8Soh4rHdoBAQAAAAAAAAB6WNj3P9oBFV6fbMhbIZAAAAAAAgAMAE0ARQBOAEEAUgBBAAEAEgBXAEkATgBGAEUASQBJAFMAMQAEABgAbQBlAG4AYQByAGEALgBsAG8AYwBhAGwAAwAsAHcAaQBuAGYAZQBpAGkAcwAxAC4AbQBlAG4AYQByAGEALgBsAG8AYwBhAGwABQAYAG0AZQBuAGEAcgBhAC4AbABvAGMAYQBsAAAAAAA='
-
-bytesM3NTLM = base64.b64decode(b64M3NTLM)
-M3Signature = bytesM3NTLM[:8].decode()
-M3MessageType = int.from_bytes(bytesM3NTLM[8:12], byteorder='little')
-
-M3LMSBLength, M3LMSBAllocated, M3LMSBOffset = readSecurityBuffer(bytesM3NTLM[12:20])
-M3NTLMSBLength, M3NTLMSBAllocated, M3NTLMSBOffset = readSecurityBuffer(bytesM3NTLM[20:28])
-M3TargetSBLength, M3TargetSBAllocated, M3TargetSBOffset = readSecurityBuffer(bytesM3NTLM[28:36])
-M3UserSBLength, M3UserSBAllocated, M3UserSBOffset = readSecurityBuffer(bytesM3NTLM[36:44])
-M3WorkstationSBLength, M3WorkstationSBAllocated, M3WorkstationSBOffset = readSecurityBuffer(bytesM3NTLM[44:52])
-M3SessionKeySBLength, M3SessionKeySBAllocated, M3SessionKeySBOffset = readSecurityBuffer(bytesM3NTLM[52:60])
-
-M3Flagsbits = readFlags(bytesM3NTLM[60:64])
-
-M3LMHash = bytesM3NTLM[M3LMSBOffset:M3LMSBOffset+M3LMSBLength]
-
-M3NTLMHash = bytesM3NTLM[M3NTLMSBOffset:M3NTLMSBOffset+M3NTLMSBLength]
-M3NTLMResponse = M3NTLMHash[:16]
-M3NTLMBlob = M3NTLMHash[16:]
-M3BlobSignature = M3NTLMBlob[:4]
-M3BlobReserved = M3NTLMBlob[4:8]
-
-M3BlobTimestamp = int.from_bytes(M3NTLMBlob[8:16], byteorder='little')/10**7 #segundos desde 1/1/1601
-secondsFrom1601ToEpoch = 11644473600
-M3BlobTimestamp = datetime.datetime.fromtimestamp(M3BlobTimestamp - secondsFrom1601ToEpoch)
-
-M3BlobClientNonce = M3NTLMBlob[16:24]
-M3BlobUnknown = M3NTLMBlob[24:28]
-M3BlobTargetInformation = M3NTLMBlob[28:-4]
-M3BlobUnknown2 = M3NTLMBlob[-4:]
+    M2OSVersionStructure = bytesM2NTLM[48:56]
+    M2OSMajorVersion = int.from_bytes(M2OSVersionStructure[:1], byteorder='little')
+    M2OSMinorVersion = int.from_bytes(M2OSVersionStructure[1:2], byteorder='little')
+    M2OSBuildNumber = int.from_bytes(M2OSVersionStructure[2:4], byteorder='little')
+    M2OSReserved = M2OSVersionStructure[4:8]
+    OSVersionDescription = getWindowsVersion(M2OSMajorVersion, M2OSMinorVersion, M2OSBuildNumber)
+    
+    print('\nOS Version Structure:', f'{M2OSMajorVersion}.{M2OSMinorVersion} (Build {M2OSBuildNumber}) - {OSVersionDescription} - {M2OSReserved.hex()}')
 
 
-M3Target = bytesM3NTLM[M3TargetSBOffset:M3TargetSBOffset+M3TargetSBLength]
-M3User = bytesM3NTLM[M3UserSBOffset:M3UserSBOffset+M3UserSBLength]
-M3WorkStation = bytesM3NTLM[M3WorkstationSBOffset:M3WorkstationSBOffset+M3WorkstationSBLength]
-M3SessionKey = bytesM3NTLM[M3SessionKeySBOffset:M3SessionKeySBOffset+M3SessionKeySBLength]
+    M2TargetName = bytesM2NTLM[M2TargetNameSB['offset']:M2TargetNameSB['offset']+M2TargetNameSB['length']]
+    print('\nTarget Name:', M2TargetName.decode('utf-16'))
 
-print(M3Signature)
-print('Message Type:',M3MessageType)
-print()
 
-print('LM Security Buffer (Length/Allocated Space/Offset):', M3LMSBLength, M3LMSBAllocated, M3LMSBOffset)
-print('NTLM Security Buffer (Length/Allocated Space/Offset):', M3NTLMSBLength, M3NTLMSBAllocated, M3NTLMSBOffset)
-print('Target Security Buffer (Length/Allocated Space/Offset):', M3TargetSBLength, M3TargetSBAllocated, M3TargetSBOffset)
-print('User Security Buffer (Length/Allocated Space/Offset):', M3UserSBLength, M3UserSBAllocated, M3UserSBOffset)
-print('Workstation Security Buffer (Length/Allocated Space/Offset):', M3WorkstationSBLength, M3WorkstationSBAllocated, M3WorkstationSBOffset)
-print('Session Key Security Buffer (Length/Allocated Space/Offset):', M3SessionKeySBLength, M3SessionKeySBAllocated, M3SessionKeySBOffset )
-print()
+    M2TargetInformation = bytesM2NTLM[M2TargetInformationSB['offset']:M2TargetInformationSB['offset']+M2TargetInformationSB['length']]
+    targets = readTargetInformation(M2TargetInformation)
 
-printFlags(M3Flagsbits)
+    print('\nTargets Information')
+    for t in targets:
+        print('Target Information Type:', t['type'], TARGET_INFORMATION_TYPES[t['type']])
+        print('Target Information Length:', t['length'])
+        print('Target Information Content:', t['content'].decode('utf-16'))
+        print()
 
-print('M3LMHash:', M3LMHash)
 
-print('M3NTLM Hash:', M3NTLMResponse)
-#print('M3NTLM Blob:', M3NTLMBlob)
-print('Blob Signature:', M3BlobSignature)
-print('Blob Reserved:', M3BlobReserved)
-print('Blob Timestamp', M3BlobTimestamp)
-print('Blob Client Nonce', M3BlobClientNonce)
-print('Blob Unknown:', M3BlobUnknown)
-print('Blob Target Information:', M3BlobTargetInformation.decode('utf-16'))
-print('Blob unknown 2:', M3BlobUnknown2)
+    print('\nRaw:', bytesM2NTLM)
+    print('Length:', len(bytesM2NTLM))
 
-print('M3Target:', M3Target)
-print('M3User:', M3User.decode('utf-16'))
-print('M3WorkStation:', M3WorkStation.decode('utf-16'))
-print('M3SessionKey:', M3SessionKey)
 
-print()
-print('Raw:', bytesM3NTLM)
-print('Length:', len(bytesM3NTLM))
+def type3Parser(bytesM3NTLM):
+    M3LMSB = readSecurityBuffer(bytesM3NTLM[12:20])
+    print('\nLM Security Buffer (Length/Allocated Space/Offset):', M3LMSB['length'], M3LMSB['allocated'], M3LMSB['offset'])
 
+    M3NTLMSB = readSecurityBuffer(bytesM3NTLM[20:28])
+    print('NTLM Security Buffer (Length/Allocated Space/Offset):', M3NTLMSB['length'], M3NTLMSB['allocated'], M3NTLMSB['offset'])
+
+    M3TargetSB = readSecurityBuffer(bytesM3NTLM[28:36])
+    print('Target Security Buffer (Length/Allocated Space/Offset):', M3TargetSB['length'], M3TargetSB['allocated'], M3TargetSB['offset'])
+
+    M3UserSB = readSecurityBuffer(bytesM3NTLM[36:44])
+    print('User Security Buffer (Length/Allocated Space/Offset):', M3UserSB['length'], M3UserSB['allocated'], M3UserSB['offset'])
+
+    M3WorkstationSB = readSecurityBuffer(bytesM3NTLM[44:52])
+    print('Workstation Security Buffer (Length/Allocated Space/Offset):', M3WorkstationSB['length'], M3WorkstationSB['allocated'], M3WorkstationSB['offset'])
+
+    M3SessionKeySB = readSecurityBuffer(bytesM3NTLM[52:60])
+    print('Session Key Security Buffer (Length/Allocated Space/Offset):', M3SessionKeySB['length'], M3SessionKeySB['allocated'], M3SessionKeySB['offset'])
+
+
+    M3Flagsbits = readFlags(bytesM3NTLM[60:64])
+    printFlags(M3Flagsbits)
+
+    M3LMHash = bytesM3NTLM[M3LMSB['offset']:M3LMSB['offset']+M3LMSB['length']]
+    print('M3LMHash:', M3LMHash)
+
+
+    M3NTLMResponse = bytesM3NTLM[M3NTLMSB['offset']:M3NTLMSB['offset']+M3NTLMSB['length']]
+    M3NTLMHash = M3NTLMResponse[:16]
+    print('\nM3NTLM Hash (NTLM response without blob):', M3NTLMHash)
+    
+    M3NTLMBlob = M3NTLMResponse[16:]
+
+    M3BlobSignature = M3NTLMBlob[:4]
+    M3BlobReserved = M3NTLMBlob[4:8]
+
+    M3BlobTimestamp = int.from_bytes(M3NTLMBlob[8:16], byteorder='little')/10**7 #segundos desde 1/1/1601
+    secondsFrom1601ToEpoch = 11644473600
+    M3BlobTimestamp = datetime.datetime.fromtimestamp(M3BlobTimestamp - secondsFrom1601ToEpoch)
+
+    M3BlobClientNonce = M3NTLMBlob[16:24]
+    M3BlobUnknown = M3NTLMBlob[24:28]
+    M3BlobTargetInformation = M3NTLMBlob[28:-4]
+    M3BlobUnknown2 = M3NTLMBlob[-4:]
+
+    #print('\nM3NTLM Blob:', M3NTLMBlob)
+    print('\nBlob Signature:', M3BlobSignature)
+    print('Blob Reserved:', M3BlobReserved)
+    print('Blob Timestamp', M3BlobTimestamp)
+    print('Blob Client Nonce', M3BlobClientNonce)
+    print('Blob Unknown:', M3BlobUnknown)
+    print('Blob Target Information:', M3BlobTargetInformation.decode('utf-16'))
+    print('Blob unknown 2:', M3BlobUnknown2)
+
+
+    M3Target = bytesM3NTLM[M3TargetSB['offset']:M3TargetSB['offset']+M3TargetSB['length']]
+    print('\nM3Target:', M3Target)
+
+    M3User = bytesM3NTLM[M3UserSB['offset']:M3UserSB['offset']+M3UserSB['length']]
+    print('M3User:', M3User.decode('utf-16'))
+
+    M3WorkStation = bytesM3NTLM[M3WorkstationSB['offset']:M3WorkstationSB['offset']+M3WorkstationSB['length']]
+    print('M3WorkStation:', M3WorkStation.decode('utf-16'))
+
+    M3SessionKey = bytesM3NTLM[M3SessionKeySB['offset']:M3SessionKeySB['offset']+M3SessionKeySB['length']]
+    print('M3SessionKey:', M3SessionKey)
+
+
+    print('\nRaw:', bytesM3NTLM)
+    print('Length:', len(bytesM3NTLM))
+
+
+def showHelp():
+    print(
+'''
+Usage:
+
+    python NTLMSSPParser.py <base64 Encoded NTLM message>
+
+    Flags:
+        --help: show this message
+'''
+    )
+
+def isBase64(s):
+    try:
+        return base64.b64encode(base64.b64decode(s)) == s.encode()
+    except Exception:
+        return False
+
+def main():
+    if len(argv) != 2 or argv[1] == '--help':
+        showHelp()
+        return
+    
+    ntlm_b64 = argv[1]
+    if not isBase64(ntlm_b64):
+        showHelp()
+        return
+    
+    # Type 1 Message Example
+    #ntlm_b64 = 'TlRMTVNTUAABAAAAB4IIAAAAAAAAAAAAAAAAAAAAAAA='
+
+    # Type 2 Message Example
+    #ntlm_b64 = 'TlRMTVNTUAACAAAADAAMADgAAAAFgokCbeRb6dMqwYIAAAAAAAAAAJIAkgBEAAAABQLODgAAAA9NAEUATgBBAFIAQQACAAwATQBFAE4AQQBSAEEAAQASAFcASQBOAEYARQBJAEkAUwAxAAQAGABtAGUAbgBhAHIAYQAuAGwAbwBjAGEAbAADACwAdwBpAG4AZgBlAGkAaQBzADEALgBtAGUAbgBhAHIAYQAuAGwAbwBjAGEAbAAFABgAbQBlAG4AYQByAGEALgBsAG8AYwBhAGwAAAAAAA=='
+    
+    # Type 3 Message Example
+    #ntlm_b64 = 'TlRMTVNTUAADAAAAGAAYAFgAAAC+AL4AcAAAAAAAAABAAAAAAgACAEAAAAAWABYAQgAAAAAAAAAAAAAABYIIAGEAVwBPAFIASwBTAFQAQQBUAEkATwBOAJSwJEhi5nh0Nhl4j/eBeIjIXqpiwibDMWXfzJFrkd047P8Soh4rHdoBAQAAAAAAAAB6WNj3P9oBFV6fbMhbIZAAAAAAAgAMAE0ARQBOAEEAUgBBAAEAEgBXAEkATgBGAEUASQBJAFMAMQAEABgAbQBlAG4AYQByAGEALgBsAG8AYwBhAGwAAwAsAHcAaQBuAGYAZQBpAGkAcwAxAC4AbQBlAG4AYQByAGEALgBsAG8AYwBhAGwABQAYAG0AZQBuAGEAcgBhAC4AbABvAGMAYQBsAAAAAAA='
+    
+    ntlm_bytes = base64.b64decode(ntlm_b64)
+    
+    signature = ntlm_bytes[:8].decode()
+    messageType = int.from_bytes(ntlm_bytes[8:12], byteorder='little')
+    
+    print('\n\nSignature:', signature)
+    print('Message Type:', messageType)
+    
+    if messageType == 1:
+        type1Parser(ntlm_bytes)
+    if messageType == 2:
+        type2Parser(ntlm_bytes)
+    if messageType == 3:
+        type3Parser(ntlm_bytes)
+
+
+if __name__ == '__main__':
+    main()
